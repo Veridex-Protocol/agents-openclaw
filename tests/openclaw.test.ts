@@ -10,7 +10,9 @@ import {
 
   // Skill importer
   inferSafetyClassFromSkill,
+  parseSkillDocument,
   importSkill,
+  importSkillDocument,
   importSkillManifest,
 
   // ACP bridge
@@ -26,6 +28,7 @@ import {
 
 import type {
   OpenClawSkill,
+  OpenClawSkillDocument,
   SkillManifest,
   OpenClawSession,
   OpenClawSessionEvent,
@@ -41,8 +44,10 @@ describe('Context File Importer', () => {
   describe('detectContextFileType', () => {
     it('detects known context file types', () => {
       expect(detectContextFileType('AGENTS.md')).toBe('AGENTS');
+      expect(detectContextFileType('BOOTSTRAP.md')).toBe('BOOTSTRAP');
       expect(detectContextFileType('SOUL.md')).toBe('SOUL');
       expect(detectContextFileType('IDENTITY.md')).toBe('IDENTITY');
+      expect(detectContextFileType('MEMORY.md')).toBe('MEMORY');
       expect(detectContextFileType('USER.md')).toBe('USER');
       expect(detectContextFileType('TOOLS.md')).toBe('TOOLS');
       expect(detectContextFileType('RULES.md')).toBe('RULES');
@@ -57,6 +62,7 @@ describe('Context File Importer', () => {
     it('handles paths with directories', () => {
       expect(detectContextFileType('workspace/SOUL.md')).toBe('SOUL');
       expect(detectContextFileType('/project/agents/AGENTS.md')).toBe('AGENTS');
+      expect(detectContextFileType('/workspace/memory/2026-03-24.md')).toBe('MEMORY');
     });
   });
 
@@ -146,6 +152,17 @@ More content here.`;
       const compiled = compileContextSections(files);
       expect(compiled['user/_root']).toBe('Top-level content here.');
     });
+
+    it('keeps daily memory files in distinct namespaces', () => {
+      const files = parseWorkspaceContextFiles({
+        'memory/2026-03-23.md': '# Notes\nYesterday',
+        'memory/2026-03-24.md': '# Notes\nToday',
+      });
+      const compiled = compileContextSections(files);
+
+      expect(compiled['memory/2026-03-23/notes']).toBe('Yesterday');
+      expect(compiled['memory/2026-03-24/notes']).toBe('Today');
+    });
   });
 });
 
@@ -154,6 +171,27 @@ More content here.`;
 // ─────────────────────────────────────────────
 
 describe('Skill Importer', () => {
+  describe('parseSkillDocument', () => {
+    it('parses docs-native SKILL.md frontmatter and instructions', () => {
+      const document = parseSkillDocument(`---
+name: hello_world
+description: Say hello to the user.
+metadata:
+  openclaw:
+    os: ["darwin"]
+---
+
+# Hello World
+Use the echo tool to greet the user.
+`);
+
+      expect(document.frontmatter.name).toBe('hello_world');
+      expect(document.frontmatter.description).toBe('Say hello to the user.');
+      expect(document.instructions).toContain('Use the echo tool');
+      expect(document.frontmatter.metadata?.openclaw?.os).toEqual(['darwin']);
+    });
+  });
+
   describe('inferSafetyClassFromSkill', () => {
     it('returns privileged for skills requiring approval', () => {
       const skill: OpenClawSkill = { id: 's1', name: 'admin', requiresApproval: true };
@@ -207,7 +245,7 @@ describe('Skill Importer', () => {
       expect(tool.safetyClass).toBe('read');
       expect(tool.timeoutMs).toBe(10_000);
       expect(tool.idempotent).toBe(true);
-      expect(warnings).toHaveLength(0);
+      expect(warnings).toHaveLength(1);
     });
 
     it('warns when no description is provided', () => {
@@ -216,15 +254,77 @@ describe('Skill Importer', () => {
       expect(warnings.some(w => w.includes('no description'))).toBe(true);
     });
 
-    it('creates a stub executor', async () => {
+    it('fails closed when no executor is bound', async () => {
       const skill: OpenClawSkill = { id: 'stub-test', name: 'stubTest', description: 'Test' };
       const { tool } = importSkill(skill);
       const result = await tool.execute({
         input: {},
         context: { runId: 'r1', agentId: 'a1', turnIndex: 0 },
       });
-      expect(result.llmOutput).toContain('stub');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('no bound executor');
+    });
+
+    it('binds imported skills to a remote ACP invoker', async () => {
+      const skill: OpenClawSkill = {
+        id: 'remote-skill',
+        name: 'remoteSkill',
+        description: 'Runs remotely',
+        inputSchema: {
+          type: 'object',
+          properties: { prompt: { type: 'string' } },
+          required: ['prompt'],
+        },
+      };
+
+      const { tool } = importSkill(skill, {
+        remote: {
+          name: 'OpenClaw Remote',
+          description: 'remote',
+          endpoint: 'https://example.com/acp',
+          invoker: {
+            invoke: async (request) => ({
+              success: true,
+              output: `executed:${request.capability}`,
+            }),
+          },
+        },
+      });
+
+      const result = await tool.execute({
+        input: { prompt: 'hello' },
+        context: { runId: 'r1', agentId: 'a1', turnIndex: 0 },
+      });
+
       expect(result.success).toBe(true);
+      expect(result.llmOutput).toBe('executed:remoteSkill');
+    });
+
+    it('imports docs-native SKILL.md documents into callable tools', async () => {
+      const document: OpenClawSkillDocument = parseSkillDocument(`---
+name: deploy_bot
+description: Deploy the bot to production.
+---
+
+# Deploy Bot
+When asked to deploy, invoke the deployment workflow with the provided prompt.
+`);
+
+      const { tool } = importSkillDocument(document, {
+        executor: async ({ input }) => ({
+          llmOutput: `deployed:${(input as { prompt: string }).prompt}`,
+          success: true,
+        }),
+      });
+
+      const result = await tool.execute({
+        input: { prompt: 'release v1.2.3' },
+        context: { runId: 'r1', agentId: 'a1', turnIndex: 0 },
+      });
+
+      expect(tool.name).toBe('deploy_bot');
+      expect(tool.description).toContain('Deploy the bot to production.');
+      expect(result.llmOutput).toBe('deployed:release v1.2.3');
     });
   });
 

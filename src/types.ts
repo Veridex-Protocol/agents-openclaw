@@ -13,7 +13,10 @@
 /** Known OpenClaw context file types. */
 export type ContextFileType =
   | 'AGENTS'
+  | 'BOOTSTRAP'
+  | 'HEARTBEAT'
   | 'IDENTITY'
+  | 'MEMORY'
   | 'USER'
   | 'SOUL'
   | 'TOOLS'
@@ -68,6 +71,41 @@ export interface OpenClawSkill {
   timeoutSeconds?: number;
   /** Custom metadata */
   metadata?: Record<string, unknown>;
+}
+
+/** Document-native OpenClaw skill metadata extracted from SKILL.md frontmatter. */
+export interface OpenClawSkillFrontmatter {
+  /** Unique identifier (snake_case in OpenClaw docs). */
+  name: string;
+  /** One-line description shown to the agent. */
+  description: string;
+  /** Optional OpenClaw metadata block. */
+  metadata?: {
+    openclaw?: {
+      os?: string[];
+      requires?: {
+        bins?: string[];
+        config?: string[];
+      };
+    };
+    [key: string]: unknown;
+  };
+  /** Optional tool definitions shipped with the skill. */
+  tools?: OpenClawSkill[];
+  /** Preserve unknown keys for forward compatibility. */
+  [key: string]: unknown;
+}
+
+/** Parsed SKILL.md document in the OpenClaw docs-native format. */
+export interface OpenClawSkillDocument {
+  /** Source filename, usually SKILL.md */
+  filename: string;
+  /** Raw markdown content */
+  raw: string;
+  /** Parsed YAML frontmatter */
+  frontmatter: OpenClawSkillFrontmatter;
+  /** Markdown body after the frontmatter */
+  instructions: string;
 }
 
 /** A skill manifest — collection of skills with workspace metadata. */
@@ -172,6 +210,14 @@ export interface ACPInvocationResponse {
   metadata?: Record<string, unknown>;
 }
 
+/** Pluggable remote ACP invoker for non-HTTP transports such as stdio bridges. */
+export interface ACPInvoker {
+  invoke(
+    request: ACPInvocationRequest,
+    signal?: AbortSignal,
+  ): Promise<ACPInvocationResponse>;
+}
+
 // ── Remote Agent ──
 
 /** Configuration for treating an OpenClaw agent as a remote collaborator. */
@@ -192,4 +238,6 @@ export interface RemoteAgentConfig {
   capabilities?: ACPCapability[];
   /** Request timeout in ms */
   timeoutMs?: number;
+  /** Optional custom transport implementation for ACP invocation. */
+  invoker?: ACPInvoker;
 }

@@ -103,6 +103,55 @@ function inferSafetyFromTags(tags?: string[]): ToolSafetyClass {
   return 'network';
 }
 
+async function invokeRemoteACP(
+  remote: RemoteAgentConfig,
+  request: ACPInvocationRequest,
+  signal?: AbortSignal,
+): Promise<ACPInvocationResponse> {
+  if (remote.invoker) {
+    return remote.invoker.invoke(request, signal);
+  }
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+  };
+
+  if (remote.auth?.type === 'bearer' && remote.auth.token) {
+    headers.Authorization = `Bearer ${remote.auth.token}`;
+  } else if (remote.auth?.type === 'api-key' && remote.auth.token) {
+    headers[remote.auth.headerName ?? 'X-API-Key'] = remote.auth.token;
+  }
+
+  const response = await fetch(remote.endpoint, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(request),
+    signal,
+  });
+
+  let result: ACPInvocationResponse | undefined;
+  try {
+    result = (await response.json()) as ACPInvocationResponse;
+  } catch {
+    result = undefined;
+  }
+
+  if (!response.ok) {
+    return {
+      success: false,
+      error: result?.error ?? `ACP endpoint returned ${response.status}`,
+      metadata: result?.metadata,
+      output: result?.output,
+    };
+  }
+
+  return result ?? {
+    success: false,
+    error: 'ACP endpoint returned an empty response body',
+  };
+}
+
 /**
  * Create a tool executor that invokes an ACP capability on a remote agent.
  */
@@ -120,18 +169,6 @@ function createACPExecutor(
       input: params.input as Record<string, unknown>,
     };
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-
-    if (remote.auth) {
-      if (remote.auth.type === 'bearer' && remote.auth.token) {
-        headers['Authorization'] = `Bearer ${remote.auth.token}`;
-      } else if (remote.auth.type === 'api-key' && remote.auth.token) {
-        headers[remote.auth.headerName ?? 'X-API-Key'] = remote.auth.token;
-      }
-    }
-
     const controller = new AbortController();
     const timeout = setTimeout(
       () => controller.abort(),
@@ -139,14 +176,7 @@ function createACPExecutor(
     );
 
     try {
-      const response = await fetch(remote.endpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(request),
-        signal: controller.signal,
-      });
-
-      const result = (await response.json()) as ACPInvocationResponse;
+      const result = await invokeRemoteACP(remote, request, controller.signal);
 
       if (!result.success) {
         return {
@@ -206,16 +236,6 @@ export function createRemoteAgentTool(
         input: { prompt },
       };
 
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-
-      if (remote.auth?.type === 'bearer' && remote.auth.token) {
-        headers['Authorization'] = `Bearer ${remote.auth.token}`;
-      } else if (remote.auth?.type === 'api-key' && remote.auth.token) {
-        headers[remote.auth.headerName ?? 'X-API-Key'] = remote.auth.token;
-      }
-
       const controller = new AbortController();
       const timeout = setTimeout(
         () => controller.abort(),
@@ -223,14 +243,7 @@ export function createRemoteAgentTool(
       );
 
       try {
-        const response = await fetch(remote.endpoint, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(request),
-          signal: controller.signal,
-        });
-
-        const result = (await response.json()) as ACPInvocationResponse;
+        const result = await invokeRemoteACP(remote, request, controller.signal);
 
         return {
           llmOutput: result.success

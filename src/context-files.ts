@@ -1,8 +1,9 @@
 /**
  * @module ContextFileImporter
  * @description
- * Parse OpenClaw workspace context files (AGENTS.md, IDENTITY.md,
- * SOUL.md, USER.md, TOOLS.md, RULES.md, KNOWLEDGE.md) into
+ * Parse OpenClaw workspace context files (AGENTS.md, BOOTSTRAP.md,
+ * IDENTITY.md, MEMORY.md, SOUL.md, USER.md, TOOLS.md, RULES.md,
+ * KNOWLEDGE.md, daily memory logs) into
  * structured context sections for the Veridex runtime.
  *
  * Context files are markdown documents with headings that define
@@ -21,7 +22,10 @@ import type {
 
 const CONTEXT_FILE_PATTERNS: Record<string, ContextFileType> = {
   'AGENTS.md': 'AGENTS',
+  'BOOTSTRAP.md': 'BOOTSTRAP',
+  'HEARTBEAT.md': 'HEARTBEAT',
   'IDENTITY.md': 'IDENTITY',
+  'MEMORY.md': 'MEMORY',
   'USER.md': 'USER',
   'SOUL.md': 'SOUL',
   'TOOLS.md': 'TOOLS',
@@ -34,7 +38,12 @@ const CONTEXT_FILE_PATTERNS: Record<string, ContextFileType> = {
  * Returns undefined if the filename doesn't match a known type.
  */
 export function detectContextFileType(filename: string): ContextFileType | undefined {
-  const basename = filename.split('/').pop() ?? filename;
+  const normalized = filename.replace(/\\/g, '/');
+  if (/\/?memory\/\d{4}-\d{2}-\d{2}\.md$/i.test(normalized)) {
+    return 'MEMORY';
+  }
+
+  const basename = normalized.split('/').pop() ?? normalized;
   return CONTEXT_FILE_PATTERNS[basename];
 }
 
@@ -133,15 +142,31 @@ export function compileContextSections(
   const compiled: Record<string, string> = {};
 
   for (const file of files) {
-    const typeKey = file.type.toLowerCase();
+    const typeKey = buildFileNamespace(file);
     for (const section of file.sections) {
       const headingKey = section.heading
         ? section.heading.toLowerCase().replace(/\s+/g, '-')
         : '_root';
-      const key = `${typeKey}/${headingKey}`;
+      const key = compiled[`${typeKey}/${headingKey}`]
+        ? `${typeKey}/${headingKey}-${Object.keys(compiled).length + 1}`
+        : `${typeKey}/${headingKey}`;
       compiled[key] = section.content;
     }
   }
 
   return compiled;
+}
+
+function buildFileNamespace(file: ContextFile): string {
+  if (file.type !== 'MEMORY') {
+    return file.type.toLowerCase();
+  }
+
+  const normalized = file.filename.replace(/\\/g, '/');
+  const basename = normalized.split('/').pop() ?? normalized;
+  if (/^\d{4}-\d{2}-\d{2}\.md$/i.test(basename)) {
+    return `memory/${basename.replace(/\.md$/i, '').toLowerCase()}`;
+  }
+
+  return 'memory';
 }

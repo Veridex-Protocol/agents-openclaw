@@ -18,6 +18,8 @@ export type {
   ContextFile,
   ContextSection,
   OpenClawSkill,
+  OpenClawSkillDocument,
+  OpenClawSkillFrontmatter,
   SkillManifest,
   OpenClawSessionEvent,
   OpenClawSession,
@@ -25,6 +27,7 @@ export type {
   ACPAgentCard,
   ACPInvocationRequest,
   ACPInvocationResponse,
+  ACPInvoker,
   RemoteAgentConfig,
 } from './types';
 
@@ -40,10 +43,16 @@ export {
 // ── Skill Importer ──
 export {
   inferSafetyClassFromSkill,
+  parseSkillDocument,
   importSkill,
+  importSkillDocument,
   importSkillManifest,
 } from './skill-importer';
-export type { SkillImportResult, ManifestImportResult } from './skill-importer';
+export type {
+  SkillImportOptions,
+  SkillImportResult,
+  ManifestImportResult,
+} from './skill-importer';
 
 // ── ACP Bridge ──
 export {

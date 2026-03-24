@@ -35,6 +35,9 @@
   "peerDependencies": {
     "@veridex/agents": ">=0.1.0"
   },
+  "dependencies": {
+    "yaml": "^2.8.2"
+  },
   "devDependencies": {
     "@veridex/agents": "workspace:*",
     "tsup": "^8.0.0",
