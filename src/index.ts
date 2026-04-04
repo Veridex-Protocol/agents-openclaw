@@ -31,6 +31,15 @@ export type {
   RemoteAgentConfig,
 } from './types';
 
+// ── Compatibility Audit ──
+export { buildCompatibilityAuditReport } from './compatibility-audit';
+export type {
+  CompatibilityAuditInput,
+  CompatibilityAuditReport,
+  EventShapeCompatibilityReport,
+  TranscriptCompatibilityReport,
+} from './compatibility-audit';
+
 // ── Context File Importer ──
 export {
   detectContextFileType,

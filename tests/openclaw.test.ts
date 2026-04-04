@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 
 import {
+  // Compatibility audit
+  buildCompatibilityAuditReport,
+
   // Context files
   detectContextFileType,
   parseMarkdownSections,
@@ -163,6 +166,55 @@ More content here.`;
       expect(compiled['memory/2026-03-23/notes']).toBe('Yesterday');
       expect(compiled['memory/2026-03-24/notes']).toBe('Today');
     });
+  });
+});
+
+// ─────────────────────────────────────────────
+// Compatibility Audit
+// ─────────────────────────────────────────────
+
+describe('Compatibility Audit', () => {
+  it('reports wrapper coverage for imported capabilities', () => {
+    const report = buildCompatibilityAuditReport({
+      importedCapabilities: [
+        { name: 'readFile' },
+        { name: 'deployBot' },
+      ],
+      wrappedCapabilities: [
+        { name: 'deployBot' },
+      ],
+    });
+
+    expect(report.importedCapabilitiesFound).toBe(2);
+    expect(report.wrappersImplemented).toBe(1);
+    expect(report.wrapperCoverage).toBe(0.5);
+    expect(report.missingWrappers).toEqual(['readFile']);
+    expect(report.unsupportedSurfaces).toContain('capability:readFile');
+  });
+
+  it('audits event-shape and transcript compatibility from imported sessions', () => {
+    const report = buildCompatibilityAuditReport({
+      sessions: [{
+        sessionId: 'session-1',
+        agentId: 'agent-1',
+        events: [
+          { type: 'tool_call', timestamp: 1700000000000, data: { tool: 'search' } },
+          { type: 'mystery_event', timestamp: 1700000001000 },
+        ],
+      }],
+    });
+
+    expect(report.eventShapeCompatibility.total).toBe(2);
+    expect(report.eventShapeCompatibility.exact).toBe(1);
+    expect(report.eventShapeCompatibility.unmapped).toBe(1);
+    expect(report.eventShapeCompatibility.unsupportedEventTypes).toEqual(['mystery_event']);
+    expect(report.transcriptCompatibility).toMatchObject({
+      compatible: false,
+      sourceEventCount: 2,
+      translatedEventCount: 2,
+      unsupportedEventTypes: ['mystery_event'],
+    });
+    expect(report.unsupportedSurfaces).toContain('event:mystery_event');
   });
 });
 
