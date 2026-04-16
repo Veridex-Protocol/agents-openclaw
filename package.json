@@ -1,6 +1,6 @@
 {
   "name": "@veridex/agents-openclaw",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "OpenClaw/Pi compatibility bridge for the Veridex Agent Runtime — skill importer, context-file importer, ACP bridge, session/event translator",
   "license": "MIT",
   "author": "Veridex Team",
