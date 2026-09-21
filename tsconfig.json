@@ -13,6 +13,7 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "types": ["node"],
     "paths": {
       "@veridex/agents": ["../agents/dist/index.d.ts"]
     }
